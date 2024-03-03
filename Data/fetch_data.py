@@ -3,9 +3,13 @@ from langchain_community.utilities import BingSearchAPIWrapper
 import requests
 import chardet
 from bs4 import BeautifulSoup
+import json
 
-os.environ["BING_SUBSCRIPTION_KEY"] = "BING_SUBSCRIPTION_KEY"
-os.environ["BING_SEARCH_URL"] = "https://api.bing.microsoft.com/v7.0/search"
+with open('config/Web_config.json') as f:
+    conf = json.load(f)
+
+os.environ["BING_SUBSCRIPTION_KEY"] = conf['BING_SUBSCRIPTION_KEY']
+os.environ["BING_SEARCH_URL"] = conf['BING_SEARCH_URL']
 
 def search_keyword(keyword, num):
     search = BingSearchAPIWrapper()

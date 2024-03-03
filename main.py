@@ -15,9 +15,13 @@ from bs4 import BeautifulSoup
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from prompt_template import input_response_schemas, input_template, keyword_template, ouput_template
+import json
 
-os.environ["QIANFAN_AK"] = "QIANFAN_AK"
-os.environ["QIANFAN_SK"] = "QIANFAN_SK"
+with open('config/LLM_config.json') as f:
+    conf = json.load(f)
+
+os.environ["QIANFAN_AK"] = conf['QIANFAN_AK']
+os.environ["QIANFAN_SK"] = conf['QIANFAN_SK']
 
 llm = QianfanChatEndpoint(
     streaming=True,
@@ -28,8 +32,11 @@ embed = QianfanEmbeddingsEndpoint()
 
 #STEP 1: 输入考生信息及调剂需求
 print("请输入你的信息包含你的各科成绩，报考院校及专业等信息以及你想要调剂到的院校及专业方向信息。\n例如：\n政治或管理类综合成绩  70 外国语成绩  80 业务课一成绩/数学  86 业务课二成绩/专业课  120总分  356报考单位 南京大学(10284)报考专业 计算机科学与技术(081200)报考学院 人工智能学院, 我想要调剂到国内985院校的计算机相关专业")
+print("===============================================")
 
-input_info = "政治或管理类综合成绩  70 外国语成绩  80 业务课一成绩/数学  86 业务课二成绩/专业课  120总分  356报考单位 南京大学(10284)报考专业 计算机科学与技术(081200)报考学院 人工智能学院, 我想要调剂到厦门大学的计算机相关专业"
+
+# input_info = "政治或管理类综合成绩  70 外国语成绩  80 业务课一成绩/数学  86 业务课二成绩/专业课  120总分  356报考单位 南京大学(10284)报考专业 计算机科学与技术(081200)报考学院 人工智能学院, 我想要调剂到厦门大学的计算机相关专业"
+input_info = input("请输入你的信息：")
 
 dict_output = StructuredOutputParser.from_response_schemas(input_response_schemas)
 format_instructions = dict_output.get_format_instructions()
@@ -43,6 +50,7 @@ input_res = input_chain.invoke({"input": input_info})
 print(input_res)
 
 #STEP 2: 搜索调剂信息
+print("===============================================")
 list_output = CommaSeparatedListOutputParser()
 format_instructions = list_output.get_format_instructions()
 keyword_prompt = PromptTemplate(
@@ -55,8 +63,9 @@ search_chain = keyword_prompt | llm | list_output
 
 if input_res["target_school"] or input_res["target_major"]:
     search_keywords = search_chain.invoke({"target_school": input_res["target_school"], "target_major": input_res["target_major"]})
+    print("搜索关键词：", search_keywords)
     for keyword in search_keywords:
-        Links = search_keyword(keyword, 5)
+        Links = search_keyword(keyword, 10)
 
 ## 将WebData存入LocalData中的向量数据库, 清空WebData文件夹    
 web_data = "./Data/WebData"
@@ -70,10 +79,19 @@ texts = []
 for doc in docs:
     texts = texts + text_splitter.split_text(doc)
 vector = FAISS.from_texts(texts, embed)
-vector.save_local(folder_path="./Data/LocalData",index_name="db")
-db = FAISS.load_local(folder_path="./Data/LocalData", index_name="db", embeddings=embed)
+
+if os.path.exists("./Data/LocalData/db"):
+    db = FAISS.load_local(folder_path="./Data/LocalData", index_name="db", embeddings=embed)
+    db.merge_from(vector)
+    print("向量数据库已存在，已更新")
+else:
+    db = vector
+    db.save_local(folder_path="./Data/LocalData",index_name="db")
+    print("向量数据库已创建")
+
 
 #STEP 3:匹配调剂信息，输出调剂建议及理由 
+print("===============================================")
 retriever = db.as_retriever()
 ouput_prompt = ChatPromptTemplate.from_template(ouput_template)
 
